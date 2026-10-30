@@ -32,6 +32,14 @@ from bindformer.data.pdbbind_index import (
 from bindformer.data.protein_featurizer import ESM2_DEFAULT_MODEL, ProteinFeaturizer, build_embedder
 
 
+def default_device() -> str:
+    if torch.cuda.is_available():
+        return "cuda"
+    if torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
 def featurize_complex(code: str, complex_dir: Path, pk: float, ligand_featurizer, protein_featurizer) -> dict:
     ligand = ligand_featurizer.featurize_sdf(complex_dir / f"{code}_ligand.sdf")
     protein = protein_featurizer.featurize_pocket(complex_dir / f"{code}_protein.pdb", ligand.coords.numpy())
@@ -61,7 +69,7 @@ def parse_args(argv=None):
     parser.add_argument("--out_dir", default="data/processed")
     parser.add_argument("--protein_features", choices=["esm2", "onehot"], default="esm2")
     parser.add_argument("--esm_model", default=ESM2_DEFAULT_MODEL)
-    parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--device", default=default_device())
     parser.add_argument("--pocket_cutoff", type=float, default=10.0)
     parser.add_argument("--contact_cutoff", type=float, default=4.0)
     parser.add_argument("--split_strategy", choices=["random", "time"], default="random")

@@ -60,7 +60,8 @@ class Esm2Embedder:
         self.device = torch.device(device)
         self.tokenizer = AutoTokenizer.from_pretrained(model_name)
         self.model = EsmModel.from_pretrained(model_name, add_pooling_layer=False).to(self.device).eval()
-        if self.device.type == "cuda":
+        self.half = self.device.type in ("cuda", "mps")
+        if self.half:
             self.model = self.model.half()
         self.dim = self.model.config.hidden_size
         self.max_len = max_len
@@ -96,6 +97,10 @@ class Esm2Embedder:
     def _embed_window(self, window: str) -> np.ndarray:
         tokens = self.tokenizer(window, return_tensors="pt").to(self.device)
         hidden = self.model(**tokens).last_hidden_state[0, 1 : len(window) + 1]
+        if self.half and not torch.isfinite(hidden).all():
+            self.model = self.model.float()  # fp16 overflowed on this window; stay in fp32 from here on
+            self.half = False
+            hidden = self.model(**tokens).last_hidden_state[0, 1 : len(window) + 1]
         return hidden.float().cpu().numpy()
 
 

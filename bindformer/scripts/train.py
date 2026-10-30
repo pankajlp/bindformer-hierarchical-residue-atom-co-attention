@@ -34,9 +34,17 @@ def apply_meta(config: dict) -> dict:
     return config
 
 
+def default_device() -> str:
+    if torch.cuda.is_available():
+        return "cuda"
+    if torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
+
+
 def resolve_device(name: str) -> torch.device:
     if name == "auto":
-        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        return torch.device(default_device())
     return torch.device(name)
 
 
