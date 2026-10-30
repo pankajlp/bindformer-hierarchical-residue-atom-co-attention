@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.ipynb_checkpoints/
+bindformer/data/raw/*
+!bindformer/data/raw/README.txt
+bindformer/data/processed/
+data/processed/
+checkpoints/
+runs/
+*.pt
+bindformer/data/processed*/
+bindformer/runs/
+bindformer/checkpoints/
