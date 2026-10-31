@@ -79,6 +79,7 @@ def main(argv=None) -> None:
     parser.add_argument("--checkpoint_dir", help="Override training.checkpoint_dir")
     parser.add_argument("--epochs", type=int, help="Override training.epochs")
     parser.add_argument("--device", help="Override device")
+    parser.add_argument("--seed", type=int, help="Override seed")
     args = parser.parse_args(argv)
 
     config = load_config(args.config)
@@ -90,6 +91,8 @@ def main(argv=None) -> None:
         config["training"]["epochs"] = args.epochs
     if args.device:
         config["device"] = args.device
+    if args.seed is not None:
+        config["seed"] = args.seed
     config = apply_meta(config)
 
     torch.manual_seed(config.get("seed", 42))
