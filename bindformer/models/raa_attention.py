@@ -5,6 +5,8 @@ import math
 import torch
 from torch import nn
 
+from bindformer.models.rbf import RadialBasisBias
+
 
 class ResidueAtomAttentionLayer(nn.Module):
     """Bidirectional sparse co-attention between residues and atoms."""
@@ -31,9 +33,20 @@ class ResidueAtomAttentionLayer(nn.Module):
         protein: torch.Tensor,
         ligand: torch.Tensor,
         attention_mask: torch.Tensor,
+        bias: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        p_context, p_attn = self._cross_attention(self.qp(protein), self.kl(ligand), self.vl(ligand), attention_mask)
-        l_context, _ = self._cross_attention(self.ql(ligand), self.kp(protein), self.vp(protein), attention_mask.transpose(1, 2))
+        """`bias`: optional `[B, H, residues, atoms]` additive bias; transposed for the atom->residue pass."""
+
+        p_context, p_attn = self._cross_attention(
+            self.qp(protein), self.kl(ligand), self.vl(ligand), attention_mask, bias
+        )
+        l_context, _ = self._cross_attention(
+            self.ql(ligand),
+            self.kp(protein),
+            self.vp(protein),
+            attention_mask.transpose(1, 2),
+            None if bias is None else bias.transpose(-1, -2),
+        )
         protein = self.protein_out(protein + p_context)
         ligand = self.ligand_out(ligand + l_context)
         return protein, ligand, p_attn
@@ -48,9 +61,12 @@ class ResidueAtomAttentionLayer(nn.Module):
         k: torch.Tensor,
         v: torch.Tensor,
         allowed_mask: torch.Tensor,
+        bias: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         qh, kh, vh = self._shape(q), self._shape(k), self._shape(v)
         logits = torch.matmul(qh, kh.transpose(-1, -2)) / math.sqrt(self.head_dim)
+        if bias is not None:
+            logits = logits + bias.to(logits.dtype)
         mask = allowed_mask.unsqueeze(1)
         has_any = mask.any(dim=-1, keepdim=True)
         logits = logits.masked_fill(~mask, torch.finfo(logits.dtype).min)
@@ -62,16 +78,34 @@ class ResidueAtomAttentionLayer(nn.Module):
 
 
 class ResidueAtomAttention(nn.Module):
-    def __init__(self, hidden_dim: int, num_heads: int, num_layers: int, dropout: float):
+    def __init__(
+        self,
+        hidden_dim: int,
+        num_heads: int,
+        num_layers: int,
+        dropout: float,
+        rbf_kernels: int = 0,
+        rbf_cutoff: float = 10.0,
+    ):
         super().__init__()
         self.layers = nn.ModuleList(
             [ResidueAtomAttentionLayer(hidden_dim, num_heads, dropout) for _ in range(num_layers)]
         )
+        self.rbf = RadialBasisBias(num_heads, rbf_kernels, rbf_cutoff) if rbf_kernels > 0 else None
 
-    def forward(self, protein: torch.Tensor, ligand: torch.Tensor, attention_mask: torch.Tensor):
+    def forward(
+        self,
+        protein: torch.Tensor,
+        ligand: torch.Tensor,
+        attention_mask: torch.Tensor,
+        distances: torch.Tensor | None = None,
+    ):
+        bias = None
+        if self.rbf is not None and distances is not None:
+            bias = self.rbf(distances)
         attentions = []
         for layer in self.layers:
-            protein, ligand, attn = layer(protein, ligand, attention_mask)
+            protein, ligand, attn = layer(protein, ligand, attention_mask, bias)
             attentions.append(attn)
         return protein, ligand, attentions
 
