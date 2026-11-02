@@ -3,6 +3,8 @@ from __future__ import annotations
 import torch
 from torch import nn
 
+from bindformer.models.pooling import AttentionPool
+
 
 def masked_mean(x: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
     if mask is None:
@@ -12,8 +14,10 @@ def masked_mean(x: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
 
 
 class FusionHead(nn.Module):
-    def __init__(self, hidden_dim: int, num_layers: int, dropout: float):
+    def __init__(self, hidden_dim: int, num_layers: int, dropout: float, attention_pool: bool = False):
         super().__init__()
+        self.protein_pool = AttentionPool(hidden_dim) if attention_pool else None
+        self.ligand_pool = AttentionPool(hidden_dim) if attention_pool else None
         layers = []
         dim = hidden_dim * 2
         for _ in range(num_layers):
@@ -24,7 +28,9 @@ class FusionHead(nn.Module):
         self.contact = nn.Sequential(nn.Linear(hidden_dim * 2, hidden_dim), nn.GELU(), nn.Linear(hidden_dim, 1))
 
     def forward(self, protein, ligand, protein_mask=None, ligand_mask=None):
-        pooled = torch.cat([masked_mean(protein, protein_mask), masked_mean(ligand, ligand_mask)], dim=-1)
+        pool_p = masked_mean if self.protein_pool is None else self.protein_pool
+        pool_l = masked_mean if self.ligand_pool is None else self.ligand_pool
+        pooled = torch.cat([pool_p(protein, protein_mask), pool_l(ligand, ligand_mask)], dim=-1)
         z = self.trunk(pooled)
         affinity = self.affinity(z).squeeze(-1)
         pair = torch.cat(
