@@ -69,6 +69,23 @@ def bond_features(bond) -> list[float]:
     ]
 
 
+def _heavy_atoms_only(mol):
+    """Drop every hydrogen, keeping the conformer.
+
+    `removeHs=True` is not enough: RDKit spares hydrogens it considers meaningful, and
+    the CASF-2016 coreset SDFs carry explicit hydrogens where the PDBbind general and
+    refined SDFs carry none. Left alone that silently makes the test ligands about
+    twice as long as the training ones. `RemoveAllHs` strips them unconditionally.
+    """
+
+    from rdkit import Chem
+
+    if not any(atom.GetAtomicNum() == 1 for atom in mol.GetAtoms()):
+        return mol
+    stripped = Chem.RemoveAllHs(mol, sanitize=False)
+    return stripped if stripped is not None and stripped.GetNumConformers() else mol
+
+
 def load_ligand(path: str | Path):
     """Load a ligand with heavy atoms only, trying progressively looser parsing.
 
@@ -91,6 +108,7 @@ def load_ligand(path: str | Path):
         else:
             mol = Chem.MolFromMol2File(str(candidate), removeHs=True, sanitize=True)
         if mol is not None and mol.GetNumConformers():
+            mol = _heavy_atoms_only(mol)
             mol.SetProp("bf_source", candidate.suffix.lstrip("."))
             return mol
 
@@ -106,7 +124,7 @@ def load_ligand(path: str | Path):
                 | Chem.SanitizeFlags.SANITIZE_SETHYBRIDIZATION,
                 catchErrors=True,
             )
-            mol = Chem.RemoveHs(mol, sanitize=False)
+            mol = _heavy_atoms_only(Chem.RemoveHs(mol, sanitize=False))
             if mol.GetNumConformers():
                 mol.SetProp("bf_source", "sdf_partial")
                 return mol
