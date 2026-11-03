@@ -99,6 +99,48 @@ of uniform with the top token taking 23-58x its even share.
 So the readout and the attention-level geometry are both ruled out as the limiting
 factor, and one of them is actively harmful when given capacity.
 
+## Pose sensitivity: the model reads proximity, not orientation
+
+The pocket crop and the co-attention mask both come from the ligand's true pose, so a
+model can score well while ignoring geometry. `scripts/pose_sensitivity.py` perturbs
+the pose at evaluation time, leaving protein and ligand tokens exactly as cached so
+only the geometry entering the mask (and the RBF bias) changes. Mean over the 3
+baseline seeds, with paired bootstraps against the true pose:
+
+| pose                | Pearson | RMSE   | mean \|d pred\| (pK) | paired delta vs true | p |
+|---------------------|---------|--------|---------------------|----------------------|---|
+| true                | 0.748   | 1.49   | --                  | --                   | --|
+| rotated in place    | 0.728   | 1.56   | 0.27                | **-0.018 [-0.032, -0.004]** | 0.011 |
+| shifted 2 A         | 0.743   | 1.53   | 0.28                | --                   | --|
+| shifted 5 A         | 0.677   | 1.81   | 0.66                | -0.057 [-0.090, -0.027] | 0.0002 |
+| shifted 10 A        | 0.324   | 3.20   | 1.63                | --                   | --|
+| shifted 25 A        | -0.096  | 17.77  | 12.27               | --                   | --|
+| scrambled           | 0.309   | 3.25   | 1.60                | -0.500 [-0.661, -0.311] | <0.0001 |
+
+Rotation was repeated with three perturbation seeds: 0.728 / 0.717 / 0.714, so the
+small size of that drop is not a lucky draw.
+
+**The informative row is the rotation.** It keeps the ligand in its pocket, keeps its
+centroid, and keeps its internal shape, so the input stays in distribution and the set
+of nearby residues barely moves; what changes is *which atom sits next to which
+residue*. Randomising that costs **0.018 Pearson out of 0.772**. The model is
+statistically pose-aware, but atom-level pairing geometry carries almost none of its
+scoring power.
+
+Moving the ligand out of the pocket does cost a lot (-0.50 scrambled), but that
+conflates two things: geometry mattering, and the input going far out of distribution.
+At 25 A the predictions are nonsense rather than merely wrong (RMSE 17.8, mean
+prediction moving 12 pK), so the model has no sane no-interaction fallback. Read the
+large drops as "the model needs the ligand in the pocket", not as evidence that it
+models interactions.
+
+Taken with the trivial floor (0.50 from atom count, 0.51 from pocket size) this gives
+a coherent account of the model: **it scores composition and proximity — the right
+sort of ligand inside the right sort of pocket — and barely uses interaction
+geometry.** That also explains the Phase 2 results: refining *how* attention weights
+distances or pools tokens cannot help a model that is not reading fine geometry in the
+first place.
+
 ## Where the remaining gap probably is
 
 Against ~0.80-0.85 published, the corrected baseline is 0.748 per seed / 0.772
@@ -108,8 +150,9 @@ attempted. That asymmetry argues for spending the next effort on data and object
 
 * the trivial floor of 0.5 suggests checking how much of the score survives
   controlling for ligand size
-* the pocket crop and attention mask are both derived from the true ligand pose, so
-  pose sensitivity is untested and the 10 A crop may leak pocket-size information
+* pose sensitivity is now measured (above) and says the model barely uses orientation,
+  so the useful question is what *would* make it use geometry: a pose-discrimination
+  objective (decoys as negatives) rather than affinity regression alone
 * harder splits (LP-PDBBind, protein-family) to see how much of 0.748 is train/test
   similarity
 * the contact auxiliary head is trained but never evaluated against PLIP interactions
@@ -122,6 +165,7 @@ attempted. That asymmetry argues for spending the next effort on data and object
 | `scripts/eval_checkpoints.py` | re-score saved checkpoints on a split without retraining |
 | `scripts/pool_diagnostics.py` | how far attention pooling is from uniform |
 | `scripts/trivial_baselines.py` | no-binding predictors, the floor to beat |
+| `scripts/pose_sensitivity.py` | perturb the pose at eval time; does the score depend on it |
 | `scripts/train_seeds.sh` | seed sweeps, laid out for `compare.py` |
 | `scripts/run_detached.py` | survive a closing terminal |
 
