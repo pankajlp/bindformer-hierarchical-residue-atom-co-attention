@@ -38,37 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1].parent))
 
 from bindformer.data import PDBbindDataset, collate_complexes
 from bindformer.models import BindFormer
-
-
-def random_rotations(n: int, generator: torch.Generator) -> torch.Tensor:
-    """`n` uniformly random 3x3 rotation matrices, via QR of a Gaussian matrix."""
-
-    a = torch.randn(n, 3, 3, generator=generator)
-    q, r = torch.linalg.qr(a)
-    # Fix the sign so these are rotations (det +1), not reflections.
-    sign = torch.sign(torch.diagonal(r, dim1=-2, dim2=-1)).unsqueeze(-2)
-    q = q * sign
-    flip = torch.where(torch.det(q) < 0, -1.0, 1.0).view(n, 1, 1)
-    return q * flip
-
-
-def perturb(coords: torch.Tensor, mask: torch.Tensor, kind: str, distance: float, generator: torch.Generator):
-    """Move each ligand in the batch. `coords` is [B, A, 3]; padding rows are ignored."""
-
-    out = coords.clone()
-    bsz = coords.shape[0]
-    valid = mask.unsqueeze(-1)
-    counts = mask.sum(1, keepdim=True).clamp_min(1).unsqueeze(-1)
-    centroid = (coords * valid).sum(1, keepdim=True) / counts
-
-    if kind in ("rotate", "scramble"):
-        rot = random_rotations(bsz, generator).to(coords.dtype)
-        out = torch.einsum("bij,baj->bai", rot, out - centroid) + centroid
-    if kind in ("shift", "scramble"):
-        direction = torch.randn(bsz, 1, 3, generator=generator)
-        direction = direction / direction.norm(dim=-1, keepdim=True).clamp_min(1e-9)
-        out = out + direction.to(coords.dtype) * distance
-    return torch.where(valid, out, coords)
+from bindformer.utils.poses import perturb
 
 
 def pearson(a: np.ndarray, b: np.ndarray) -> float:

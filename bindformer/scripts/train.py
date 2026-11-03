@@ -129,12 +129,16 @@ def main(argv=None) -> None:
         model,
         optimizer,
         device,
-        BindFormerLoss(**config["loss"]),
+        BindFormerLoss(**{k: v for k, v in config["loss"].items() if k != "pose_weight"}),
         amp=train_cfg["amp"],
         grad_clip_norm=train_cfg["grad_clip_norm"],
         warmup_epochs=train_cfg.get("warmup_epochs", 1),
         early_stopping_patience=train_cfg.get("early_stopping_patience"),
         selection_metric=train_cfg.get("selection_metric", "rmse"),
+        pose_weight=config.get("loss", {}).get("pose_weight", 0.0),
+        decoy_kind=config.get("decoy", {}).get("kind", "rotate"),
+        decoy_distance=config.get("decoy", {}).get("distance", 0.0),
+        seed=config.get("seed", 42),
     )
 
     if args.mode == "train":

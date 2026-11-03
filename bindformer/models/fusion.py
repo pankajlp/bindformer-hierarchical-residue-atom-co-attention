@@ -22,6 +22,7 @@ class FusionHead(nn.Module):
         attention_pool: bool = False,
         pool_scorer_hidden: int = 0,
         pool_temperature: float = 1.0,
+        pose_head: bool = False,
     ):
         super().__init__()
         def make_pool():
@@ -36,6 +37,8 @@ class FusionHead(nn.Module):
             dim = hidden_dim
         self.trunk = nn.Sequential(*layers)
         self.affinity = nn.Linear(hidden_dim, 1)
+        # Native-vs-decoy discrimination, which only geometry can separate.
+        self.pose = nn.Linear(hidden_dim, 1) if pose_head else None
         self.contact = nn.Sequential(nn.Linear(hidden_dim * 2, hidden_dim), nn.GELU(), nn.Linear(hidden_dim, 1))
 
     def forward(self, protein, ligand, protein_mask=None, ligand_mask=None):
@@ -52,5 +55,8 @@ class FusionHead(nn.Module):
             dim=-1,
         )
         contacts = self.contact(pair).squeeze(-1)
-        return {"affinity": affinity, "contact_logits": contacts}
+        out = {"affinity": affinity, "contact_logits": contacts}
+        if self.pose is not None:
+            out["pose_logit"] = self.pose(z).squeeze(-1)
+        return out
 

@@ -9,8 +9,9 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from bindformer.training.losses import BindFormerLoss
+from bindformer.training.losses import BindFormerLoss, pose_discrimination_loss
 from bindformer.training.metrics import regression_metrics
+from bindformer.utils.poses import decoy_batch
 
 
 def warmup_cosine_schedule(optimizer: torch.optim.Optimizer, warmup_steps: int, total_steps: int, min_lr_ratio: float = 0.05):
@@ -35,6 +36,10 @@ class Trainer:
         warmup_epochs: float = 1.0,
         early_stopping_patience: int | None = 10,
         selection_metric: str = "rmse",
+        pose_weight: float = 0.0,
+        decoy_kind: str = "rotate",
+        decoy_distance: float = 0.0,
+        seed: int = 0,
     ):
         self.model = model.to(device)
         self.optimizer = optimizer
@@ -47,6 +52,11 @@ class Trainer:
         self.selection_metric = selection_metric
         self.scaler = torch.amp.GradScaler("cuda", enabled=self.amp)
         self.scheduler = None
+        self.pose_weight = pose_weight
+        self.decoy_kind = decoy_kind
+        self.decoy_distance = decoy_distance
+        # Decoys are drawn on the CPU generator so a run stays reproducible across devices.
+        self.decoy_generator = torch.Generator().manual_seed(seed)
 
     def _is_better(self, value: float, best: float) -> bool:
         if math.isnan(value):
@@ -105,6 +115,8 @@ class Trainer:
             with torch.autocast(device_type=self.device.type, enabled=self.amp):
                 outputs = self.model(batch)
                 losses = self.loss_fn(outputs, batch)
+                if self.pose_weight > 0:
+                    losses = self._add_pose_loss(losses, outputs, batch)
             self.scaler.scale(losses["loss"]).backward()
             self.scaler.unscale_(self.optimizer)
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip_norm)
@@ -115,6 +127,22 @@ class Trainer:
             for key, value in losses.items():
                 totals[f"train_{key}"] = totals.get(f"train_{key}", 0.0) + float(value.detach().cpu())
         return {key: value / max(1, len(loader)) for key, value in totals.items()}
+
+    def _add_pose_loss(self, losses: dict, outputs: dict, batch: dict) -> dict:
+        """Score a decoy pose of the same complexes and ask the model to tell them apart."""
+
+        if "pose_logit" not in outputs:
+            raise RuntimeError("pose_weight > 0 needs a model built with pose_head=True")
+        moved = decoy_batch(batch, self.decoy_kind, self.decoy_distance, self.decoy_generator)
+        decoy_out = self.model(moved)
+        pose_loss = pose_discrimination_loss(outputs["pose_logit"], decoy_out["pose_logit"])
+        accuracy = (
+            (outputs["pose_logit"] > decoy_out["pose_logit"]).float().mean()
+        )  # per-complex: is the native pose ranked above its own decoy
+        losses["loss"] = losses["loss"] + self.pose_weight * pose_loss
+        losses["pose_loss"] = pose_loss.detach()
+        losses["pose_acc"] = accuracy.detach()
+        return losses
 
     @torch.no_grad()
     def predict(self, loader: DataLoader) -> tuple[list[str], torch.Tensor, torch.Tensor]:
