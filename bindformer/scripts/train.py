@@ -70,6 +70,22 @@ def make_loader(dataset, config: dict, shuffle: bool) -> DataLoader | None:
     )
 
 
+def build_optimizer(model: BindFormer, train_cfg: dict) -> torch.optim.Optimizer:
+    """AdamW, with the attention-pool scorer optionally on a larger learning rate.
+
+    A zero-initialized scorer at the model's own LR stayed at uniform weights for a
+    whole run, so `pool_lr_mult` lets it move while the rest of the model is unchanged.
+    """
+
+    lr, mult = train_cfg["lr"], train_cfg.get("pool_lr_mult", 1.0)
+    pool = [p for name, p in model.named_parameters() if "_pool" in name]
+    rest = [p for name, p in model.named_parameters() if "_pool" not in name]
+    groups = [{"params": rest, "lr": lr}]
+    if pool:
+        groups.append({"params": pool, "lr": lr * mult})
+    return torch.optim.AdamW(groups, lr=lr, weight_decay=train_cfg["weight_decay"])
+
+
 def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description="Train or evaluate BindFormer.")
     parser.add_argument("--config", default="configs/default.yaml")
@@ -108,7 +124,7 @@ def main(argv=None) -> None:
     checkpoint_dir = Path(train_cfg["checkpoint_dir"])
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-    optimizer = torch.optim.AdamW(model.parameters(), lr=train_cfg["lr"], weight_decay=train_cfg["weight_decay"])
+    optimizer = build_optimizer(model, train_cfg)
     trainer = Trainer(
         model,
         optimizer,

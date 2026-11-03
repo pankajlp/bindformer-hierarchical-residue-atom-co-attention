@@ -35,6 +35,8 @@ class BindFormer(nn.Module):
         protein_rbf_cutoff: float = 20.0,
         raa_rbf_cutoff: float | None = None,
         attention_pool: bool = False,
+        pool_scorer_hidden: int = 0,
+        pool_temperature: float = 1.0,
     ):
         super().__init__()
         self.pocket_radius_angstrom = pocket_radius_angstrom
@@ -45,7 +47,9 @@ class BindFormer(nn.Module):
         )
         self.ligand_encoder = LigandEncoder(ligand_dim, hidden_dim, num_heads, ligand_layers, dropout)
         self.raa = ResidueAtomAttention(hidden_dim, num_heads, raa_layers, dropout, rbf_kernels, raa_cutoff)
-        self.fusion = FusionHead(hidden_dim, fusion_layers, dropout, attention_pool)
+        self.fusion = FusionHead(
+            hidden_dim, fusion_layers, dropout, attention_pool, pool_scorer_hidden, pool_temperature
+        )
 
     def forward(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         protein_mask = batch.get("protein_mask")

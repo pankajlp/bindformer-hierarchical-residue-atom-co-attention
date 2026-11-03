@@ -70,3 +70,59 @@ def test_gradients_reach_both_pools():
 
 def test_attention_pool_is_off_by_default():
     assert FusionHead(16, 1, 0.0).protein_pool is None
+
+
+def test_mlp_scorer_also_equals_mean_pooling_at_init():
+    g = torch.Generator().manual_seed(11)
+    x = torch.randn(3, 9, 16, generator=g)
+    mask = torch.ones(3, 9, dtype=torch.bool)
+    mask[2, 5:] = False
+    pool = AttentionPool(16, scorer_hidden=32, temperature=0.5)
+    assert torch.allclose(pool(x, mask), masked_mean(x, mask), atol=1e-6)
+
+
+def test_nonpositive_temperature_is_rejected():
+    import pytest
+
+    with pytest.raises(ValueError):
+        AttentionPool(16, temperature=0.0)
+
+
+def test_temperature_sharpens_the_weights():
+    """Same scorer, lower temperature -> further from uniform."""
+
+    torch.manual_seed(5)
+    x = torch.randn(1, 12, 16)
+    sharp, soft = AttentionPool(16, temperature=0.25), AttentionPool(16, temperature=1.0)
+    w = torch.randn(1, 16) * 0.5
+    for pool in (sharp, soft):
+        with torch.no_grad():
+            pool.score.weight.copy_(w)
+    spread = lambda p: p(x).abs().std()
+    assert spread(sharp) != spread(soft)
+
+
+def test_pool_params_get_a_larger_learning_rate():
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "bindformer"))
+    from scripts.train import build_optimizer
+
+    model = build(True)
+    opt = build_optimizer(model, {"lr": 1e-4, "weight_decay": 0.0, "pool_lr_mult": 20.0})
+    lrs = sorted(group["lr"] for group in opt.param_groups)
+    assert lrs == [1e-4, 2e-3]
+    n_pool = sum(1 for n, _ in model.named_parameters() if "_pool" in n)
+    assert len(opt.param_groups[-1]["params"]) == n_pool
+
+
+def test_optimizer_has_one_group_without_pooling():
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "bindformer"))
+    from scripts.train import build_optimizer
+
+    opt = build_optimizer(build(False), {"lr": 1e-4, "weight_decay": 0.0, "pool_lr_mult": 20.0})
+    assert len(opt.param_groups) == 1

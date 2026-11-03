@@ -1,0 +1,46 @@
+seed: 42
+device: auto
+
+data:
+  processed_dir: data/processed
+  cache_ext: .pt
+  train_split: train
+  val_split: val
+  test_split: casf2016
+  num_workers: 4
+
+# protein_dim / ligand_dim / pocket_radius are overridden by processed_dir/meta.json when present.
+features:
+  protein_dim: 1280
+  ligand_dim: 74
+  pocket_radius_angstrom: 10.0
+
+model:
+  hidden_dim: 256
+  num_heads: 8
+  dropout: 0.1
+  protein_layers: 3
+  ligand_layers: 3
+  raa_layers: 2
+  fusion_layers: 2
+  attention_pool: true
+  pool_scorer_hidden: 64
+  pool_temperature: 0.5
+
+training:
+  batch_size: 16
+  epochs: 100
+  lr: 0.0002
+  weight_decay: 0.00001
+  warmup_epochs: 2
+  early_stopping_patience: 15
+  selection_metric: rmse
+  pool_lr_mult: 20.0
+  amp: true
+  grad_clip_norm: 5.0
+  checkpoint_dir: checkpoints_attn2
+
+loss:
+  affinity_weight: 1.0
+  contact_weight: 0.2
+  contact_pos_weight: 10.0

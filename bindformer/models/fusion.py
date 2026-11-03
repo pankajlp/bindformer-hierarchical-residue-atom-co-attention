@@ -14,10 +14,21 @@ def masked_mean(x: torch.Tensor, mask: torch.Tensor | None) -> torch.Tensor:
 
 
 class FusionHead(nn.Module):
-    def __init__(self, hidden_dim: int, num_layers: int, dropout: float, attention_pool: bool = False):
+    def __init__(
+        self,
+        hidden_dim: int,
+        num_layers: int,
+        dropout: float,
+        attention_pool: bool = False,
+        pool_scorer_hidden: int = 0,
+        pool_temperature: float = 1.0,
+    ):
         super().__init__()
-        self.protein_pool = AttentionPool(hidden_dim) if attention_pool else None
-        self.ligand_pool = AttentionPool(hidden_dim) if attention_pool else None
+        def make_pool():
+            return AttentionPool(hidden_dim, pool_scorer_hidden, pool_temperature) if attention_pool else None
+
+        self.protein_pool = make_pool()
+        self.ligand_pool = make_pool()
         layers = []
         dim = hidden_dim * 2
         for _ in range(num_layers):

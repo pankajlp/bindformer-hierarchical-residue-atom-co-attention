@@ -8,16 +8,32 @@ class AttentionPool(nn.Module):
     """Learned pooling over a masked token sequence.
 
     A scorer assigns one logit per token and the pooled vector is the softmax-weighted
-    sum. `score` is zero-initialized, so every token starts with an equal weight and
-    the layer is *exactly* mean pooling at initialization — uniform attention is the
-    mean. Any difference from the masked-mean baseline is therefore learned.
+    sum. The scorer's last layer is zero-initialized, so every token starts with an
+    equal weight and the layer is *exactly* mean pooling at initialization — uniform
+    attention is the mean. Any difference from the masked-mean baseline is learned.
+
+    A single linear scorer trained at the model's own learning rate never left uniform
+    (attention entropy stayed at 0.999 of uniform across a full run), which made the
+    null result it produced uninformative. `scorer_hidden` gives the scorer a hidden
+    layer and `temperature` below 1 sharpens the softmax at the same logit scale; the
+    scorer also wants a larger learning rate than the rest of the model, which
+    `training.pool_lr_mult` supplies.
     """
 
-    def __init__(self, hidden_dim: int, temperature: float = 1.0):
+    def __init__(self, hidden_dim: int, scorer_hidden: int = 0, temperature: float = 1.0):
         super().__init__()
-        self.score = nn.Linear(hidden_dim, 1)
-        nn.init.zeros_(self.score.weight)
-        nn.init.zeros_(self.score.bias)
+        if temperature <= 0:
+            raise ValueError("temperature must be positive")
+        if scorer_hidden > 0:
+            self.score = nn.Sequential(
+                nn.Linear(hidden_dim, scorer_hidden), nn.GELU(), nn.Linear(scorer_hidden, 1)
+            )
+            last = self.score[-1]
+        else:
+            self.score = nn.Linear(hidden_dim, 1)
+            last = self.score
+        nn.init.zeros_(last.weight)
+        nn.init.zeros_(last.bias)
         self.temperature = temperature
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor | None = None) -> torch.Tensor:
