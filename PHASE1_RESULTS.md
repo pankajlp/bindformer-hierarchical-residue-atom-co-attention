@@ -1,3 +1,7 @@
+> **Superseded.** Every CASF number here was measured through the ligand-hydrogen
+> train/test bug fixed in commit `36491d8`; correcting it moves CASF Pearson by about
+> +0.08 and changes some conclusions. See `RESULTS.md` for current numbers.
+
 # BindFormer Phase 1 — baseline on real PDBbind v2020 / CASF-2016
 
 Apple M5 Max (MPS), PDBbind v2020. Splits identical across every run below

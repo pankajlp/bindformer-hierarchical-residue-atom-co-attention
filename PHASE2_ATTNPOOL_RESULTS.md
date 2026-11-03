@@ -1,3 +1,7 @@
+> **Superseded.** Every CASF number here was measured through the ligand-hydrogen
+> train/test bug fixed in commit `36491d8`; correcting it moves CASF Pearson by about
+> +0.08 and changes some conclusions. See `RESULTS.md` for current numbers.
+
 # Phase 2, item 2: attention-pooled readout — negative result
 
 Verdict after two attempts: **learned pooling does not improve CASF-2016 scoring

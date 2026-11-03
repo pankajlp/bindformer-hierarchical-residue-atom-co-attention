@@ -114,7 +114,7 @@ def main(argv=None) -> None:
             r = pearson(pred, yte)
         print(f"{name:<18} {r:>13.3f} {rmse(pred, yte):>7.3f}")
 
-    print(f"\nfor reference: BindFormer baseline is 0.670 +/- 0.022 Pearson, RMSE 1.622")
+    print(f"\nfor reference: BindFormer baseline is 0.748 +/- 0.011 Pearson, RMSE 1.44")
     print(f"label spread on {args.test_split}: sd {yte.std(ddof=1):.3f}")
 
 
