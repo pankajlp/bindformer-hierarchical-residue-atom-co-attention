@@ -104,6 +104,38 @@ falsifiable account of what the model has and has not learned---and catches at l
 spurious ``significant'' result and one data bug that a single-number workflow would have
 shipped.
 
+\section{Related work}
+
+Learned scoring functions for protein--ligand affinity are usually advanced along two
+axes, architecture and data. PIGNet~\cite{pignet} predicts atom--atom pairwise
+interactions through physics-informed equations parameterised by neural networks and sums
+them into a total affinity, and reports improved docking and screening power on CASF-2016.
+PIGNet2~\cite{pignet2} pairs that physics-informed graph network with a data augmentation
+strategy. Both frame insufficient generalisation as the central obstacle, and PIGNet2
+attributes it specifically to the small number of experimental structure--affinity
+datasets. DeepRLI~\cite{deeprli} encodes the complex as a fully connected graph over
+graph-transformer layers and trains three read-outs---scoring and ranking, docking, and
+screening---simultaneously, supported by docking-augmented data, physics-informed blocks
+and contrastive learning. PLANET v2.0~\cite{planet2} replaces a contact-map representation
+with a mixture density network over binding modes and reports scoring, ranking and docking
+power on CASF-2016.
+
+Our architecture is deliberately less specialised than any of these, and we make no claim
+to compete with them on headline CASF-2016 numbers. The question we ask is different and,
+we would argue, prior: given a reported scoring-power number, how much of it reflects a
+model of binding at all? We find that predictors using no binding information reach
+$R=0.50$--$0.53$ on the same 285 complexes, and that a train/test preprocessing bug moved
+\pearson{} by more than any architectural change we attempted. Neither observation is a
+criticism of the models above, none of which we re-evaluate here; both are statements
+about what a single CASF-2016 number can establish on its own.
+
+It is worth marking where our results converge with that literature rather than contradict
+it. PIGNet and PIGNet2 both locate the difficulty in data---in pose coverage and in the
+scarcity of structure--affinity pairs---and address it by augmentation rather than by
+adding capacity. Our scorecard arrives at the same place from the opposite direction:
+every capacity-adding intervention we measured was null or harmful, while the single
+data-level correction we made was worth more than all of them combined.
+
 \section{Model and data}
 
 \subsection{Architecture}
@@ -491,7 +523,7 @@ the per-seed run records are available at
 quantitative claim in this paper is reproducible from the committed code; \code{RESULTS.md}
 in the repository records the raw per-seed numbers and the exact commands. Trained model weights are not redistributed with the code but are available from the author on request; their sha256 sums are committed so any copy can be verified.
 
-\begin{thebibliography}{9}
+\begin{thebibliography}{99}
 
 \bibitem{casf2016}
 M.~Su, Q.~Yang, Y.~Du, G.~Feng, Z.~Liu, Y.~Li, and R.~Wang.
@@ -513,6 +545,30 @@ model.
 C.~Ying, T.~Cai, S.~Luo, S.~Zheng, G.~Ke, D.~He, Y.~Shen, and T.-Y. Liu.
 \newblock Do transformers really perform badly for graph representation?
 \newblock In \emph{Advances in Neural Information Processing Systems (NeurIPS)}, 2021.
+
+\bibitem{pignet}
+S.~Moon, W.~Zhung, S.~Yang, J.~Lim, and W.~Y. Kim.
+\newblock PIGNet: a physics-informed deep learning model toward generalized drug--target
+interaction predictions.
+\newblock \emph{arXiv:2008.12249}, 2020.
+
+\bibitem{pignet2}
+S.~Moon, S.-Y. Hwang, J.~Lim, and W.~Y. Kim.
+\newblock PIGNet2: a versatile deep learning-based protein--ligand interaction prediction
+model for binding affinity scoring and virtual screening.
+\newblock \emph{arXiv:2307.01066}, 2023.
+
+\bibitem{deeprli}
+H.~Lin, S.~Wang, J.~Zhu, Y.~Li, J.~Pei, and L.~Lai.
+\newblock DeepRLI: a multi-objective framework for universal protein--ligand interaction
+prediction.
+\newblock \emph{arXiv:2401.10806}, 2024.
+
+\bibitem{planet2}
+H.~Gao, X.~Zhang, J.~Li, X.~Chen, H.~Wang, Y.~Qi, and R.~Wang.
+\newblock PLANET v2.0: a comprehensive protein--ligand affinity prediction model based on
+mixture density network.
+\newblock \emph{arXiv:2601.07415}, 2026.
 
 \end{thebibliography}
 

@@ -47,6 +47,16 @@ diagnostics) at https://github.com/pankajlp/bindformer-hierarchical-residue-atom
 - Cross-list: **`cs.LG`** (Machine Learning) — the measurement protocol and ablation
   methodology.
 
+**Why not cs.LG as primary.** Endorsement is required per *primary* category. Checking the
+"Which authors of this paper are endorsers?" link on the closest related papers shows that
+the researchers whose work actually matches this paper are qualified for `q-bio.BM`, not
+`cs.LG`: Seokhyun Moon (PIGNet2, arXiv:2307.01066) and Haoyu Lin (DeepRLI,
+arXiv:2401.10806) both endorse for q-bio.BM only. With cs.LG as primary you would have to
+ask an ML researcher with no connection to protein-ligand binding, which runs against
+arXiv's own advice to "choose an endorser whose work is related to the subject of your
+article". (PLANET v2.0, arXiv:2601.07415, is filed under cs.LG, but its endorser page
+would not load, so its authors' eligibility is unverified.)
+
 ## License
 Recommended: **CC BY 4.0** — maximum reach and citation, you keep copyright.
 Alternative if you want to limit reuse: **arXiv non-exclusive license to distribute**
@@ -59,9 +69,10 @@ and drafted the manuscript under the author's direction. Keep this — several v
 require it.
 
 ## Before you submit — checks
-- [ ] Your arXiv account has **endorsement for `q-bio.BM`**. New submitters usually need
-      an endorsement from an established author in that category; without it the
-      submission will not go through. Check this first — it is the most common blocker.
+- [ ] **Endorsement for the primary category.** You need exactly ONE positive endorsement
+      per category — not several. arXiv states it is "inappropriate to email large numbers
+      of potential endorsers at once", and reserves the right to revoke endorsement for
+      policy violations. Send one personalised request at a time.
 - [ ] Upload the **source tarball**, not the PDF.
 - [ ] After upload, arXiv shows its own compiled PDF — **read it** before clicking submit.
 - [ ] There is a ~24h hold before announcement; you can still withdraw during it.
