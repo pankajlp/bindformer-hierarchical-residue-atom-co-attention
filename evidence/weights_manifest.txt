@@ -1,6 +1,8 @@
 # BindFormer trained checkpoints — sha256 manifest
 # weights are NOT in this repo. They are kept in a separate PRIVATE repository
-#   (pankajlp/bindformer-weights, release weights-v1, asset bindformer-checkpoints.tar), available from the author on request.
+#   (pankajlp/bindformer-weights, release weights-v1, asset bindformer-checkpoints-weights-v1.tar), available from the author on request.
+# The archive itself (1036168704 bytes) has sha256:
+#   f44edef0d91a93236cff837598e75836854183c671da809e22b8fc6d8426d29d  bindformer-checkpoints-weights-v1.tar
 # Verify any copy against the sha256 sums below:  shasum -a 256 -c weights_manifest.txt
 # generated 2026-11-04T04:45:19Z
 
