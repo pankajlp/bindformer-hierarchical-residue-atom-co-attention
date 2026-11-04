@@ -1,7 +1,7 @@
 # Evidence
 
 Everything needed to verify the paper and `../RESULTS.md` without retraining. Model weights
-(`*.pt`, ~557 MB) are omitted as reproducible from the committed code and fixed seeds; every
+(`*.pt`) are omitted from git as reproducible from the committed code and fixed seeds, and are also archived as a **private** GitHub release asset (`weights-v1`, `bindformer-checkpoints.tar`) with sha256 sums in `weights_manifest.txt`; every
 *number* behind the paper is here, as the raw per-complex predictions it was computed from,
 the per-epoch training logs, and the regenerated comparison and diagnostic outputs.
 
