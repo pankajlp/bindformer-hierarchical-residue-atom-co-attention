@@ -1,0 +1,518 @@
+\documentclass[11pt]{article}
+
+% --- Dependency-light preamble: compiles on a stock TeX Live / Overleaf / arXiv ---
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{array}
+\usepackage{microtype}
+\usepackage[hidelinks]{hyperref}
+\usepackage{url}
+\usepackage{textcomp}
+\setlength{\emergencystretch}{3em}  % avoid overfull lines from long identifiers and paths
+
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\Ang}{\mbox{\AA}}  % math- and text-safe Angstrom
+\newcommand{\pearson}{Pearson~$R$}
+
+\title{\textbf{What a Protein--Ligand Affinity Model Actually Learns:\\
+A Preprocessing Bug, Three Null Ablations, and a\\
+Proximity Ceiling on CASF-2016}}
+
+\author{Pankaj Kumar\thanks{Independent researcher. Correspondence: \texttt{pankajator@gmail.com}.
+This study was carried out with substantial assistance from an AI coding agent, which
+wrote the implementation, ran the experiments, and drafted the manuscript under the
+author's direction. All quantitative claims are reproducible from the committed code and
+run artifacts.}}
+\date{November 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We report a controlled empirical study of BindFormer, a residue--atom co-attention model
+that predicts protein--ligand binding affinity ($\mathrm{p}K$) from a complex with a known
+crystal pose, evaluated for scoring power on CASF-2016. The study is organized around an
+evaluation protocol built \emph{before} any architectural change: every comparison uses
+three random seeds and a paired bootstrap over the 285 test complexes, so that an effect
+the size of a typical architectural tweak (0.01--0.03 \pearson{}) can be told apart from
+seed and test-set noise. The protocol repays its cost immediately. Our single-seed
+baseline reaches $R=0.748\pm0.011$, but trivial predictors that use no binding information
+reach $R=0.50$ (ligand heavy-atom count) and $R=0.51$ (pocket residue count), so roughly
+two thirds of the raw correlation is explained by molecular size and pocket identity. A
+diagnostic baseline then exposed a train/test preprocessing bug---hydrogen atoms were
+silently retained in the CASF ligands but not the training ligands---whose correction
+raised \pearson{} by about $0.08$ everywhere and reversed two conclusions that had
+otherwise looked significant, including an apparent $+0.14$ benefit of ESM-2 protein
+embeddings that corrected to $+0.05$ at $p=0.095$. Of four architectural or objective
+interventions, three produced no significant change on CASF and one significantly hurt,
+each with an accompanying diagnostic confirming the intervention was mechanistically
+active rather than inert. A pose-perturbation analysis explains the pattern: rotating the
+ligand in place costs only $0.02$--$0.03$ \pearson{}, while translating it out of the
+pocket drives the score to zero. BindFormer scores \emph{composition and proximity}, not
+interaction geometry, and refining how attention weights distances cannot help a model
+that does not read fine geometry. We offer the protocol, the diagnostics, and the
+preprocessing lesson as transferable, and release all code.
+\end{abstract}
+
+\section{Introduction}
+
+Machine-learning scoring functions for protein--ligand binding affinity are usually
+reported as a single correlation coefficient on a benchmark such as the CASF-2016 scoring
+power set~\cite{casf2016}: Pearson~$R$, RMSE, and the residual standard deviation SD over
+285 protein--ligand complexes. Published deep models reach roughly $0.80$--$0.85$
+\pearson{}. A single number on 285 complexes, however, carries a 95\% confidence interval
+of about $\pm0.06$, which is wider than the improvement most architectural changes claim.
+Reporting one number per configuration therefore cannot, on its own, distinguish a real
+advance from noise, and the literature's difficulty in reproducing incremental gains is at
+least partly a measurement problem.
+
+This paper is a case study in treating the measurement as the first-class object. We build
+BindFormer, a residue--atom co-attention affinity model in the current idiom (ESM-2 pocket
+embeddings, bidirectional distance-masked co-attention, an auxiliary contact head), and we
+build an uncertainty harness---multiple seeds plus a paired bootstrap over complexes---%
+before attempting any improvement. We then use that harness to interrogate the model rather
+than only to rank it.
+
+The study's findings are mostly negative, and deliberately so:
+
+\begin{enumerate}
+\item A correctly measured baseline reaches $R=0.748\pm0.011$ (three seeds), with a
+three-seed prediction ensemble at $0.772$.
+\item Trivial, no-binding predictors reach $R=0.50$--$0.53$ on CASF-2016, so most of the
+raw correlation requires no model of binding at all. This floor is rarely reported and
+materially changes how a headline number should be read.
+\item A diagnostic baseline uncovered a hydrogen-handling bug that silently inflated the
+CASF ligands relative to the training ligands. Correcting it was worth $+0.08$ \pearson{},
+larger than any architectural change we tried, and it reversed two conclusions.
+\item Three architectural or objective interventions (a radial-basis distance bias,
+attention-pooled readout, and a decoy-pose discrimination objective) produced no
+significant change on CASF; a sharpened attention pool significantly \emph{reduced} it. In
+each case a mechanism diagnostic confirms the intervention was active.
+\item Pose perturbation shows the model is almost insensitive to ligand orientation:
+rotating the ligand within its pocket costs $0.02$--$0.03$ \pearson{}. The model reads
+proximity and composition, not interaction geometry.
+\end{enumerate}
+
+We do not claim a new state of the art. We claim that a disciplined protocol, paired with
+cheap mechanistic diagnostics, turns a sequence of ambiguous results into a coherent and
+falsifiable account of what the model has and has not learned---and catches at least one
+spurious ``significant'' result and one data bug that a single-number workflow would have
+shipped.
+
+\section{Model and data}
+
+\subsection{Architecture}
+
+BindFormer scores a given crystal pose. Pocket residues within $10\,\Ang$ of the ligand are
+encoded with ESM-2 650M per-residue embeddings~\cite{esm2}; ligand heavy atoms receive
+74-dimensional atom features together with a learned per-head bias derived from bond-graph
+shortest-path distances, in the manner of a graph transformer~\cite{graphormer}.
+Bidirectional residue--atom co-attention is restricted to residue--atom pairs within
+$10\,\Ang$. The model has two heads: affinity regression and an auxiliary residue--atom
+contact head trained against $4\,\Ang$ labels. The encoders use a custom biased transformer
+built on scaled dot-product attention rather than \code{nn.TransformerEncoder}, because the
+PyTorch fast path turned the per-head bias mask into \code{NaN} for batch sizes greater than
+one.
+
+\subsection{Data and splits}
+
+We use PDBbind v2020~\cite{pdbbind} (refined and general sets, 19{,}443 complexes) for
+training and validation, and the CASF-2016 core set (285 complexes) as a held-out test set
+that never enters training or validation. Validation is a seeded random 10\% of the
+non-core data. Featurization crops each protein to its $10\,\Ang$ pocket, computes contact
+labels, and caches per-complex tensors; protein features are stored in half precision.
+Five of the 19{,}443 ligands fail all parsing fallbacks (corrupt SDF records in the general
+set, none in CASF) and are dropped, leaving splits of 17{,}238 train / 1{,}915 validation /
+285 CASF, verified to be disjoint complex-by-complex.
+
+All training was run on a single Apple M5 Max using the Metal Performance Shaders backend.
+Preprocessing with ESM-2 took about 11 minutes; each training seed took 70--150 minutes
+depending on machine contention. The full suite comprises 50 unit tests.
+
+\section{Evaluation protocol}
+
+\subsection{The measurement problem}
+
+On $n=285$ complexes, the 95\% confidence interval on a single \pearson{} near $0.75$ is
+approximately $\pm0.06$ (bootstrap). The seed-to-seed standard deviation of our baseline is
+$0.011$--$0.022$. The architectural changes we test are each expected, from the literature,
+to move \pearson{} by $0.01$--$0.03$. All three of these quantities are the same order of
+magnitude, so a comparison of two configurations by one number each is uninformative by
+construction.
+
+\subsection{The harness}
+
+We therefore adopt a fixed protocol for every comparison (\code{scripts/compare.py}):
+
+\begin{itemize}
+\item \textbf{Seeds.} Each configuration is trained at three seeds into separate
+directories; we report the per-seed mean and standard deviation.
+\item \textbf{Paired bootstrap.} Two configurations are compared by resampling the 285
+\emph{complexes} (10{,}000 resamples) and recomputing the metric difference on the
+seed-averaged predictions, both models scored on the same complexes. Pairing removes
+test-set sampling noise; seeds remove initialization noise.
+\item \textbf{Residual correlation.} Pairing tightens the interval only in proportion to how
+correlated the two models' residuals are. The tool reports that correlation rather than
+assuming it: it is $\approx0.95$ for near-identical variants (where pairing roughly halves
+the interval) and $\approx0.73$ for ESM-2 versus one-hot (where pairing buys little). We
+report both the paired interval and an unpaired Fisher-$z$ reference.
+\end{itemize}
+
+A supporting tool, \code{scripts/eval\_checkpoints.py}, re-scores a saved checkpoint on a
+new feature cache without retraining; this is what made the preprocessing-bug correction
+(Section~\ref{sec:bug}) a matter of re-featurizing and re-scoring rather than repeating
+every run.
+
+\section{Results}
+
+\subsection{Baseline and the no-binding floor}
+\label{sec:baseline}
+
+Three ESM-2 seeds score CASF-2016 at $0.751$, $0.758$, $0.736$ \pearson{}
+($0.748\pm0.011$); the three-seed prediction ensemble reaches $0.772$ with a bootstrap
+interval $[0.705, 0.828]$ and RMSE $1.44$. Against the $0.80$--$0.85$ range of published
+deep models this is a reasonable but unremarkable baseline.
+
+The headline is better read against a floor. Table~\ref{tab:trivial} reports predictors
+that use no binding information, fitted on the training split and scored on CASF.
+
+\begin{table}[t]
+\centering
+\begin{tabular}{lcc}
+\toprule
+Predictor & CASF \pearson{} & RMSE \\
+\midrule
+Ligand heavy-atom count (no fit)     & 0.500 & 2.12 \\
+Pocket residue count (no fit)        & 0.508 & 1.98 \\
+Ridge on per-element counts          & 0.526 & 1.91 \\
+Ridge on mean/sum atom features      & 0.526 & 1.91 \\
+\textbf{BindFormer (per seed)}       & \textbf{0.748} & \textbf{1.47} \\
+\bottomrule
+\end{tabular}
+\caption{No-binding baselines on CASF-2016. Simply counting ligand atoms reaches
+$R=0.50$; counting pocket residues reaches $0.51$. BindFormer adds about $0.22$ over this
+floor.}
+\label{tab:trivial}
+\end{table}
+
+Molecular size alone reaches $R=0.50$, and pocket size $0.51$. Roughly two thirds of the
+raw correlation on CASF-2016 requires no binding model. We report this not to diminish the
+benchmark but because it reframes every subsequent number: a change that moves \pearson{}
+by $0.02$ is moving a quantity whose first $0.50$ is molecular bookkeeping.
+
+\subsection{A train/test preprocessing bug}
+\label{sec:bug}
+
+The trivial baselines were introduced as a diagnostic, and they immediately exposed a bug.
+Ridge regression on per-element atom counts scored $0.04$---below heavy-atom count's
+$0.46$---which is impossible, since element counts are a superset of the total count. The
+cause was a single element column with mean $0.11$ in training and $13.96$ in CASF:
+hydrogen.
+
+The CASF-2016 core-set SDF files carry explicit hydrogens; the PDBbind general and refined
+SDFs do not. RDKit's \code{removeHs=True} preserves hydrogens it deems chemically
+meaningful rather than stripping them unconditionally, so $36\%$ of cached CASF ligand
+atoms were hydrogen while the training ligands were heavy-atom only. The test ligands were
+about $1.6\times$ the length of the training ligands (median $36$ versus $23$ atoms), and
+because the pocket crop and the $4\,\Ang$ contact labels are derived from ligand
+coordinates, those were computed against hydrogen positions as well. The model was trained
+on one atom distribution and evaluated on another.
+
+The fix is one call to \code{RemoveAllHs} on every ligand parse path---the behavior the
+featurizer's documentation already claimed. Because the training data was almost unaffected
+($\approx11\%$ of complexes lost $1$--$3$ stray hydrogens, verified to preserve finiteness
+and atom counts), the correction required only re-featurizing the test set and re-scoring
+the existing checkpoints. It raised CASF \pearson{} by about $0.08$ for every
+configuration and reversed two conclusions (Sections~\ref{sec:esm} and~\ref{sec:ablations}).
+It was the single largest improvement in the project, larger than any architectural change
+attempted, which is the study's central cautionary result.
+
+\subsection{Protein features: ESM-2 versus one-hot}
+\label{sec:esm}
+
+Replacing ESM-2 pocket embeddings with a one-hot residue-identity encoding, on identical
+splits, gives the corrected comparison in Table~\ref{tab:esm}.
+
+\begin{table}[t]
+\centering
+\begin{tabular}{lcc}
+\toprule
+Protein features & CASF \pearson{} & val \pearson{} \\
+\midrule
+ESM-2 650M (3 seeds) & 0.748 & 0.741--0.751 \\
+one-hot (1 seed)     & 0.722 & 0.727 \\
+\bottomrule
+\end{tabular}
+\caption{Corrected ESM-2 versus one-hot. Paired bootstrap on seed-mean predictions:
+$\Delta R = -0.050\ [-0.108, +0.009]$, $p=0.095$---not significant.}
+\label{tab:esm}
+\end{table}
+
+Measured through the hydrogen bug, this comparison read as $\Delta R = -0.154$ at
+$p=0.0002$: an apparently decisive $+0.14$ \pearson{} benefit from ESM-2. The corrupted,
+oversized CASF ligands harmed the weaker one-hot model (which fell to $0.551$) far more than
+the ESM-2 model (which fell to $0.670$), inflating the gap roughly threefold. Corrected, the
+gap is $-0.050$ at $p=0.095$: ESM-2 may be worth about $0.05$ \pearson{} here, but on three
+seeds it is \emph{not established}. We withdraw the original claim. A related claim---that
+validation compressed the ESM-2 gap ``tenfold''---is also withdrawn; corrected, the gap is
+$0.019$ on validation and $0.026$ on CASF, so validation was a fair proxy for this
+comparison.
+
+One validation finding survives the correction: validation does not rank \emph{seeds}.
+Across the three baseline seeds, the best validation \pearson{} belongs to the worst CASF
+seed and vice versa; validation \pearson{} moves $0.010$ across seeds while CASF moves
+$0.022$. Validation remains usable for early stopping but not for choosing among
+configurations or checkpoints.
+
+\subsection{Architectural ablations}
+\label{sec:ablations}
+
+We tested two architectural changes that target the model's use of geometry, each on three
+seeds against the three baseline seeds, each paired on the 285 complexes. For each we
+computed a diagnostic establishing the mechanism was active, so that a null result means
+``did not help'' rather than ``did nothing.''
+
+\paragraph{Radial-basis distance bias.} Pairwise distances (residue--residue in protein
+self-attention; residue--atom in co-attention) are expanded on 16 Gaussian radial basis
+functions and mixed into one additive logit per attention head. The output projection is
+zero-initialized, so an untrained model is numerically identical to the baseline (asserted
+to $10^{-6}$), and any effect is learned. Result: $\Delta R = -0.003\ [-0.024, +0.018]$,
+$p=0.77$---no effect. The mechanism was active: sweeping distance through the trained
+modules yields a co-attention bias spanning $1.4$--$2.6$ attention logits, enough to reshape
+the softmax substantially.
+
+\paragraph{Attention-pooled readout.} The affinity head pools residues and atoms with a
+masked mean; we replaced this with a learned attention pool, again zero-initialized so that
+uniform weights reproduce the mean exactly. A first attempt produced $\Delta R = -0.004$ at
+$p=0.70$, but a diagnostic showed the pooling had never left uniform (attention entropy
+$0.999$ of uniform), making the null uninformative. We then forced the pool to train (an
+MLP scorer, softmax temperature $0.5$, and a $20\times$ learning rate for the scorer),
+verified on a short run that attention entropy fell to $0.67$--$0.81$, and re-ran. The
+sharpened pool reaches attention entropy $0.05$--$0.51$ of uniform at the selected
+checkpoints (the top-weighted token taking $23$--$58\times$ its uniform share) and scores
+$\Delta R = -0.032\ [-0.056, -0.010]$, $p=0.0076$: a significant \emph{regression}, with
+RMSE agreeing ($+0.076$, $p=0.004$).
+
+That mean pooling and near-argmax pooling score within $0.004$ of each other---and that
+forcing selectivity only hurts---indicates the readout is not where the limiting information
+lives. The optimizer traverses the whole path from uniform to near-argmax on its own and
+performance is flat along it.
+
+\subsection{What the model uses: pose sensitivity}
+\label{sec:pose}
+
+If the pocket crop and co-attention mask are built from the true pose, a model can score
+well while ignoring geometry. We test this directly by perturbing the ligand pose at
+evaluation time, holding all protein and ligand \emph{tokens} fixed so that only the
+geometry entering the distance mask (and the RBF bias, where present) changes
+(\code{scripts/pose\_sensitivity.py}). Table~\ref{tab:pose} reports the sweep, averaged over
+three seeds.
+
+\begin{table}[t]
+\centering
+\begin{tabular}{lccc}
+\toprule
+Pose & \pearson{} & RMSE & mean $|\Delta\mathrm{pred}|$ (p$K$) \\
+\midrule
+true                 & 0.748 & 1.49 & --- \\
+rotated in place     & 0.728 & 1.56 & 0.27 \\
+shifted $2\,\Ang$    & 0.743 & 1.53 & 0.28 \\
+shifted $5\,\Ang$    & 0.677 & 1.81 & 0.66 \\
+shifted $10\,\Ang$   & 0.324 & 3.20 & 1.63 \\
+shifted $25\,\Ang$   & $-0.096$ & 17.77 & 12.27 \\
+scrambled            & 0.309 & 3.25 & 1.60 \\
+\bottomrule
+\end{tabular}
+\caption{Pose sensitivity on CASF-2016. ``Rotated in place'' keeps the ligand in its
+pocket, keeps its centroid, and keeps its internal shape; only which atom faces which
+residue changes. It costs about $0.02$ \pearson{}. Translating the ligand out of the pocket
+destroys the score, but drives the model out of distribution (at $25\,\Ang$ the predictions
+are nonsense, not merely wrong), so those rows show the model needs the ligand in the
+pocket, not that it models interactions.}
+\label{tab:pose}
+\end{table}
+
+The informative row is the rotation. Randomizing which atom contacts which residue, while
+leaving the pocket, the centroid, and the ligand shape untouched, costs only $0.02$
+\pearson{}; a paired bootstrap against the true pose gives $-0.018\ [-0.032, -0.004]$
+($p=0.011$) for a baseline trained on the pre-correction data and $-0.032\ [-0.050, -0.016]$
+for a baseline trained on corrected data. Either way, atom-level pairing geometry carries
+almost none of the model's scoring power. The large drops under translation conflate
+``geometry matters'' with ``the input left the training distribution,'' and should not be
+read as evidence that interactions are modeled.
+
+Together with the trivial floor (Section~\ref{sec:baseline}), this gives a coherent account:
+BindFormer scores composition and proximity---the right sort of ligand in the right sort of
+pocket---and barely uses interaction geometry. This also explains the ablations of
+Section~\ref{sec:ablations}: refining how attention weights distances or pools tokens cannot
+help a model that is not reading fine geometry in the first place.
+
+\subsection{A pose-discrimination objective}
+\label{sec:decoy}
+
+If affinity regression gives the encoder no reason to use geometry, perhaps an explicit
+objective will. We added a native-versus-decoy discrimination head whose signal is
+geometry alone: a decoy shares the native pose's protein, atom features, and bond graph,
+differing only in the ligand's placement (a random rotation in place, exactly the
+perturbation the baseline was insensitive to). The decoy's cached attention mask is dropped
+so the model must rebuild it from the moved coordinates, and a short run confirmed the task
+is learnable (native-versus-decoy ranking accuracy rising from chance to $76\%$ in three
+epochs) before committing seeds.
+
+We trained three seeds with the objective and, as a matched control, three baseline seeds on
+the identical corrected cache---so that the comparison is not confounded by the preprocessing
+fix. Results in Table~\ref{tab:decoy}.
+
+\begin{table}[t]
+\centering
+\begin{tabular}{lccc}
+\toprule
+Configuration & per-seed CASF \pearson{} & seed SD & ensemble \\
+\midrule
++ decoy objective                 & 0.756 & 0.022 & 0.779 \\
+baseline, corrected training       & 0.733 & 0.017 & 0.767 \\
+baseline, pre-fix training (rescored) & 0.748 & 0.011 & 0.772 \\
+\bottomrule
+\end{tabular}
+\caption{Decoy-pose objective. Paired bootstrap on seed-mean predictions: versus the
+matched control, $\Delta R = +0.012\ [-0.008, +0.033]$, $p=0.23$; versus the rescored
+baseline, $+0.007$, $p=0.48$. Not significant against either.}
+\label{tab:decoy}
+\end{table}
+
+The objective is not significant against either control. Its point estimate is positive
+(unlike the RBF and pooling ablations) and the upper end of its interval ($+0.033$) would be
+worth having, so it is the only intervention that might survive more seeds; it is not
+established on three. More telling is the mechanism check. The pose head learns its task
+well---ranking accuracy $83.6\%$, $84.6\%$, $88.3\%$ at the selected epochs---yet the paired
+rotation penalty of the affinity head is unchanged: $-0.030\ [-0.052, -0.009]$ with the
+objective versus $-0.032\ [-0.050, -0.016]$ without it. The seed with the \emph{best} pose
+ranking ($88.3\%$) had the \emph{worst} CASF score ($0.731$). Learning to discriminate poses
+better did not make the affinity head more pose-aware; the auxiliary task and the regression
+head are decoupled.
+
+This result also forced a mid-study correction. An earlier reading had compared the
+pose-trained models' rotation penalty against baselines trained on the pre-correction data
+($-0.018$) and reported the objective as roughly doubling pose sensitivity. The matched
+baseline on corrected data already sits at $-0.032$, so the increase is attributable to the
+hydrogen fix---training on hydrogen-free ligands makes the model read placement more
+sharply---and not to the decoy objective. We note it as a second instance of the matched
+control, rather than a convenient one, changing the conclusion.
+
+\section{Discussion}
+
+\subsection{A scorecard of interventions}
+
+Table~\ref{tab:scorecard} collects the interventions. The one data-preprocessing fix
+outweighs the four architectural and objective changes combined; three of the four produced
+no significant effect and one was harmful. The ``mechanism active'' column is what makes the
+nulls informative: in every case we can show the intervention did what it claimed, so the
+null is a statement about the model, not about a dead code path.
+
+\begin{table}[t]
+\centering
+\begin{tabular}{lccl}
+\toprule
+Intervention & $\Delta R$ (CASF) & $p$ & mechanism verified active \\
+\midrule
+ESM-2 vs.\ one-hot            & $+0.050$ & 0.095 & --- \\
+RBF distance bias             & $-0.003$ & 0.77  & yes ($1.4$--$2.6$ logit span) \\
+Attention pool (as built)     & $-0.004$ & 0.70  & no (entropy $0.999$) \\
+Attention pool (sharpened)    & $-0.032$ & 0.008 & yes (entropy $0.05$--$0.51$) \\
+Decoy-pose objective          & $+0.012$ & 0.23  & task learned; head unchanged \\
+\textit{Hydrogen preprocessing fix} & \textit{$+0.08$} & --- & --- \\
+\bottomrule
+\end{tabular}
+\caption{All interventions, measured on CASF-2016 by paired bootstrap over 285 complexes,
+three seeds per arm. The preprocessing fix is not an architectural change and has no paired
+$p$; it is the correction underlying every other row's corrected value.}
+\label{tab:scorecard}
+\end{table}
+
+\subsection{Spurious results caught by the protocol}
+
+Three conclusions that a single-number workflow would have reported did not survive the
+protocol: the $+0.14$ ESM-2 benefit (an artifact of the preprocessing bug), the claim that
+validation-based early stopping selects a better CASF checkpoint (within noise, $p=0.17$),
+and the claim that the decoy objective doubled pose sensitivity (attributable to the data
+fix via the matched control). Each was caught by a control or a mechanism diagnostic, not
+by re-examination of the headline number. This is the practical argument for the protocol:
+at the noise scale of CASF-2016, cheap controls are not optional rigor but the difference
+between a result and an artifact.
+
+\subsection{Implications for architecture search}
+
+Our results suggest that, for a model in this family, searching over attention-level
+inductive biases is poorly targeted. The model's ceiling is not set by how it weights
+distances inside attention but by what its training objective rewards: affinity regression
+on crystal poses rewards reading the pocket and the ligand, and penalizes nothing about
+getting the geometry wrong. The decoy experiment shows the model \emph{can} be trained to
+read pose, but as a side task that does not reach the regression head. The productive next
+step is to couple the geometric signal to the affinity prediction---sharing the
+pose-discrimination representation with the readout, or weighting the affinity loss by pose
+confidence---rather than adding attention capacity.
+
+\section{Limitations}
+
+Several limitations bound these claims. The one-hot ablation uses a single seed, so its
+comparison, while corrected, has no error bar on the weaker arm. The decoy objective's two
+controls differ by $0.015$ \pearson{} per seed (most plausibly noise between independent
+runs, since the preprocessing fix was verified not to damage the training data), which
+leaves its effect estimate sensitive to the choice of control; this is itself a reason to
+regard it as unresolved rather than as evidence of no effect. All evaluation uses the
+standard random CASF split; we have not run the harder protein-family or LP-PDBBind splits,
+so we cannot say how much of $0.748$ is train/test similarity. The model scores a single
+crystal pose, and the auxiliary contact head, though trained, is never evaluated against
+reference interaction fingerprints. Finally, the absolute baseline ($0.748$) is below
+published state of the art; the study is about measurement and mechanism, not about topping
+the benchmark.
+
+\section{Conclusion}
+
+We built a protein--ligand affinity model and, more importantly, an evaluation protocol to
+go with it, and used the protocol to ask what the model learns rather than only how high it
+scores. The protocol paid for itself: it exposed a preprocessing bug worth more than any
+architectural change we attempted, caught two further spurious conclusions, and turned three
+null ablations into a single coherent finding---that the model scores composition and
+proximity, not interaction geometry. We recommend that scoring-power results on CASF-2016 be
+reported against the no-binding floor ($R\approx0.50$), with multiple seeds and paired
+comparisons, and with a mechanism diagnostic for any claimed architectural benefit. The
+cost is a few extra training runs; the return is the ability to tell a result from an
+artifact at a noise scale where the two look identical.
+
+\paragraph{Reproducibility.} All code, the uncertainty harness, the diagnostic scripts, and
+the per-seed run records are available at
+\url{https://github.com/pankajlp/bindformer-hierarchical-residue-atom-co-attention}. Every
+quantitative claim in this paper is reproducible from the committed code; \code{RESULTS.md}
+in the repository records the raw per-seed numbers and the exact commands.
+
+\begin{thebibliography}{9}
+
+\bibitem{casf2016}
+M.~Su, Q.~Yang, Y.~Du, G.~Feng, Z.~Liu, Y.~Li, and R.~Wang.
+\newblock Comparative assessment of scoring functions: the CASF-2016 update.
+\newblock \emph{Journal of Chemical Information and Modeling}, 59(2):895--913, 2019.
+
+\bibitem{pdbbind}
+Z.~Liu, M.~Su, L.~Han, J.~Liu, Q.~Yang, Y.~Li, and R.~Wang.
+\newblock Forging the basis for developing protein--ligand interaction scoring functions.
+\newblock \emph{Accounts of Chemical Research}, 50(2):302--309, 2017.
+
+\bibitem{esm2}
+Z.~Lin, H.~Akin, R.~Rao, B.~Hie, Z.~Zhu, W.~Lu, et al.
+\newblock Evolutionary-scale prediction of atomic-level protein structure with a language
+model.
+\newblock \emph{Science}, 379(6637):1123--1130, 2023.
+
+\bibitem{graphormer}
+C.~Ying, T.~Cai, S.~Luo, S.~Zheng, G.~Ke, D.~He, Y.~Shen, and T.-Y. Liu.
+\newblock Do transformers really perform badly for graph representation?
+\newblock In \emph{Advances in Neural Information Processing Systems (NeurIPS)}, 2021.
+
+\end{thebibliography}
+
+\end{document}
