@@ -141,6 +141,69 @@ geometry.** That also explains the Phase 2 results: refining *how* attention wei
 distances or pools tokens cannot help a model that is not reading fine geometry in the
 first place.
 
+## Phase 3, item 1: decoy-pose objective — no affinity gain, and no added pose sensitivity
+
+A native-vs-decoy head (`loss.pose_weight`, `configs/phase3_pose.yaml`) trained
+against rotations of the ligand in place. A decoy shares the native pose's protein,
+atom features and bond graph, so only geometry separates them. 3 seeds, trained on
+`data/processed_h`, against **two** controls: a baseline retrained on the same
+corrected cache, and the earlier baselines trained pre-fix and rescored.
+
+| configuration | per-seed CASF | seed sd | seed-mean preds |
+|---------------|---------------|---------|-----------------|
+| + decoy objective | 0.756 | 0.022 | 0.779 |
+| baseline, corrected training (matched control) | 0.733 | 0.017 | 0.767 |
+| baseline, pre-fix training, rescored | 0.748 | 0.011 | 0.772 |
+
+Paired bootstrap on seed-mean predictions:
+
+| comparison | delta pearson_r | p |
+|------------|-----------------|---|
+| pose vs matched control | +0.012 [-0.008, +0.033] | 0.23 |
+| pose vs rescored baseline | +0.007 [-0.013, +0.027] | 0.48 |
+
+**Not significant against either control.** The point estimate is positive, unlike
+RBF (-0.003) and sharpened pooling (-0.032), and the upper end of the interval
+(+0.033) would be a worthwhile gain, so this is the only intervention so far that
+might survive more seeds. It is not established on three.
+
+### The pose head learns its task but the affinity head does not become pose-aware
+
+Native-vs-decoy ranking accuracy reaches 83.6% / 84.6% / 88.3% at the selected
+epochs, so the auxiliary task is genuinely learned. The question is whether that
+makes the *affinity* prediction read geometry. Paired rotation penalty
+(`scripts/pose_sensitivity.py`, true pose vs rotated in place):
+
+| arm | rotation penalty |
+|-----|------------------|
+| baseline, corrected training | -0.032 [-0.050, -0.016] |
+| + decoy objective | -0.030 [-0.052, -0.009] |
+
+Identical. The decoy objective adds **no** pose sensitivity to the affinity head.
+Note also that seed 44 had the best ranking accuracy (88.3%) and the worst CASF
+(0.731): learning to rank poses better did not make it score affinity better.
+
+A correction to an earlier reading of this experiment. Mid-run, the pose models'
+rotation penalty (-0.035 raw) was compared against the pre-fix-trained baselines
+(-0.018 paired) and reported as the objective having roughly doubled pose
+sensitivity. That was confounded. The matched baseline on corrected data already
+sits at -0.032, so **the hydrogen fix, not the decoy objective, accounts for the
+increase in pose sensitivity** (-0.018 -> -0.032). Training on ligands whose
+hydrogens are gone apparently makes the model read placement more sharply.
+
+### Why the two controls disagree, and which to trust
+
+Per seed the matched control (0.733 +/- 0.017) comes in below the rescored one
+(0.748 +/- 0.011), which would make the decoy objective look better. These are
+independent training runs rather than paired, the gap is about 1.5 seed sds, and
+their seed-mean predictions are much closer (0.767 vs 0.772), so this is most
+plausibly noise. The fix was verified not to have damaged the training data: every
+changed train complex lost exactly its hydrogen count, all features finite, no
+degenerate ligands, and only ~11% of complexes changed, by 1-3 atoms each. The
+matched control is the methodologically correct one and is quoted as primary, but the
+effect estimate is sensitive to that choice (+0.012 vs +0.007), which is itself a
+reason to treat the result as unresolved.
+
 ## Where the remaining gap probably is
 
 Against ~0.80-0.85 published, the corrected baseline is 0.748 per seed / 0.772
@@ -150,9 +213,9 @@ attempted. That asymmetry argues for spending the next effort on data and object
 
 * the trivial floor of 0.5 suggests checking how much of the score survives
   controlling for ligand size
-* pose sensitivity is now measured (above) and says the model barely uses orientation,
-  so the useful question is what *would* make it use geometry: a pose-discrimination
-  objective (decoys as negatives) rather than affinity regression alone
+* a decoy-pose objective has now been tried (above): it learns to rank poses without
+  making the affinity head any more pose-aware, so the coupling between the auxiliary
+  task and the regression head is the thing to attack, not the auxiliary task itself
 * harder splits (LP-PDBBind, protein-family) to see how much of 0.748 is train/test
   similarity
 * the contact auxiliary head is trained but never evaluated against PLIP interactions
