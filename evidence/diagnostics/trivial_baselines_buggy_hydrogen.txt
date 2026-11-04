@@ -1,0 +1,10 @@
+fitting on 4000 train complexes, scoring 285 casf2016
+
+predictor           CASF Pearson    RMSE
+heavy_atoms                0.462   2.071
+pocket_size                0.511   1.953
+atom_counts                0.042   2.747
+ligand_features            0.431   2.391
+
+for reference: BindFormer baseline is 0.748 +/- 0.011 Pearson, RMSE 1.44
+label spread on casf2016: sd 2.174

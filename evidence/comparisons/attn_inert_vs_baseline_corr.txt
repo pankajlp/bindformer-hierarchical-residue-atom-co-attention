@@ -1,0 +1,24 @@
+
+casf2016: 285 complexes, 10000 bootstrap resamples
+
+baseline  (3 seeds)
+  pearson_r     per-seed 0.748 +/- 0.011 over seeds   seed-mean preds 0.772 [0.708, 0.824]
+  rmse          per-seed 1.488 +/- 0.046 over seeds   seed-mean preds 1.437 [1.308, 1.570]
+  sd            per-seed 1.442 +/- 0.028 over seeds   seed-mean preds 1.383 [1.236, 1.525]
+
+attnpool  (3 seeds)
+  pearson_r     per-seed 0.740 +/- 0.015 over seeds   seed-mean preds 0.767 [0.703, 0.820]
+  rmse          per-seed 1.501 +/- 0.032 over seeds   seed-mean preds 1.441 [1.305, 1.579]
+  sd            per-seed 1.461 +/- 0.037 over seeds   seed-mean preds 1.394 [1.248, 1.538]
+
+paired bootstrap: attnpool - baseline (seed-mean predictions, same complexes)
+  pearson_r     0.772 -> 0.767  delta -0.004 [-0.027, +0.018]  p=0.6992  NOT significant, favours neither
+  rmse          1.437 -> 1.441  delta +0.004 [-0.051, +0.058]  p=0.8856  NOT significant, favours neither
+  sd            1.383 -> 1.394  delta +0.011 [-0.046, +0.069]  p=0.6992  NOT significant, favours neither
+
+residual correlation between the two models: 0.949
+unpaired reference: a single run would need delta pearson_r > +0.064 to clear 95%.
+Pairing only tightens the delta in proportion to that correlation, so it buys
+little for models this far apart and a lot for near-identical variants.
+
+wrote ../evidence/comparisons/attn_inert_vs_baseline_corr.json

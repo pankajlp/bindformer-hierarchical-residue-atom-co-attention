@@ -1,0 +1,17 @@
+HYDROGEN BUG EVIDENCE
+============================================================
+
+Hydrogen fraction of cached ligand atoms, by split and cache:
+  train     buggy (data/processed)       H=  1882/ 572187  (  0.3%)
+  train     fixed (data/processed_h)     H=     0/ 570305  (  0.0%)
+  casf2016  buggy (data/processed)       H=  3978/  10974  ( 36.2%)
+  casf2016  fixed (data/processed_h)     H=     0/   6996  (  0.0%)
+
+Median ligand atom count, CASF:
+  buggy: 36
+  fixed: 23
+
+The tell: ridge on element counts scored 0.04 < heavy-atom count 0.46,
+impossible since element counts are a superset. One column (hydrogen)
+had mean 0.11 in train, 13.96 in CASF -- see trivial_baselines_buggy_hydrogen.txt
+vs trivial_baselines_corrected.txt.

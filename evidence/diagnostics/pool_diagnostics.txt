@@ -1,0 +1,18 @@
+checkpoints_attn2_s42/best.pt
+  protein entropy/uniform=0.513 top x uniform=23.11
+  ligand entropy/uniform=0.169 top x uniform=30.52
+checkpoints_attn2_s43/best.pt
+  protein entropy/uniform=0.122 top x uniform=57.84
+  ligand entropy/uniform=0.093 top x uniform=32.76
+checkpoints_attn2_s44/best.pt
+  protein entropy/uniform=0.187 top x uniform=49.30
+  ligand entropy/uniform=0.050 top x uniform=35.44
+checkpoints_attn_s42/best.pt
+  protein entropy/uniform=0.999 top x uniform=1.16
+  ligand entropy/uniform=0.997 top x uniform=1.24
+checkpoints_attn_s43/best.pt
+  protein entropy/uniform=0.999 top x uniform=1.18
+  ligand entropy/uniform=0.996 top x uniform=1.27
+checkpoints_attn_s44/best.pt
+  protein entropy/uniform=0.999 top x uniform=1.23
+  ligand entropy/uniform=0.999 top x uniform=1.16

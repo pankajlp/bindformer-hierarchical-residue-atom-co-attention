@@ -1,0 +1,16 @@
+scored checkpoints
+scored checkpoints_esm_s43
+scored checkpoints_esm_s44
+
+3 model(s), casf2016, mean over runs
+
+pose                Pearson    RMSE  mean |d pred|
+true pose             0.748   1.488          0.000
+rotated in place      0.728   1.562          0.272
+shifted 2 A           0.743   1.526          0.278
+shifted 5 A           0.677   1.811          0.655
+shifted 10 A          0.324   3.201          1.628
+shifted 25 A         -0.096  17.766         12.274
+scrambled             0.309   3.247          1.598
+
+A flat Pearson column means the score does not depend on where the ligand is.

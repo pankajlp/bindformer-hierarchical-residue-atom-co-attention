@@ -7,12 +7,12 @@ bindformer/data/raw/*
 bindformer/data/processed/
 data/processed/
 checkpoints/
-runs/
+/bindformer/runs/
 *.pt
 bindformer/data/processed*/
 bindformer/runs/
 bindformer/checkpoints/
 
-# experiment outputs (checkpoints, rescores, run logs)
-checkpoints_*/
-*.log
+# experiment working dirs: reproducible, large (weights); curated copies live in evidence/
+/bindformer/checkpoints_*/
+/bindformer/*.log

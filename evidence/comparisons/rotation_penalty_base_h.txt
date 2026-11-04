@@ -1,0 +1,23 @@
+
+casf2016: 285 complexes, 10000 bootstrap resamples
+
+true_pose  (3 seeds)
+  pearson_r     per-seed 0.733 +/- 0.017 over seeds   seed-mean preds 0.767 [0.701, 0.820]
+  rmse          per-seed 1.498 +/- 0.031 over seeds   seed-mean preds 1.415 [1.282, 1.556]
+  sd            per-seed 1.479 +/- 0.041 over seeds   seed-mean preds 1.396 [1.248, 1.543]
+
+rotated  (3 seeds)
+  pearson_r     per-seed 0.699 +/- 0.010 over seeds   seed-mean preds 0.735 [0.662, 0.795]
+  rmse          per-seed 1.601 +/- 0.005 over seeds   seed-mean preds 1.518 [1.383, 1.660]
+  sd            per-seed 1.554 +/- 0.021 over seeds   seed-mean preds 1.475 [1.325, 1.621]
+
+paired bootstrap: rotated - true_pose (seed-mean predictions, same complexes)
+  pearson_r     0.767 -> 0.735  delta -0.032 [-0.050, -0.016]  p=0.0002  significant, favours true_pose
+  rmse          1.415 -> 1.518  delta +0.103 [+0.061, +0.147]  p=0.0000  significant, favours true_pose
+  sd            1.396 -> 1.475  delta +0.080 [+0.040, +0.119]  p=0.0002  significant, favours true_pose
+
+residual correlation between the two models: 0.975
+unpaired reference: a single run would need delta pearson_r > +0.068 to clear 95%.
+Pairing only tightens the delta in proportion to that correlation, so it buys
+little for models this far apart and a lot for near-identical variants.
+

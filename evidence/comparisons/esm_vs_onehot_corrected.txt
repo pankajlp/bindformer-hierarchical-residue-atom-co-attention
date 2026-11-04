@@ -1,0 +1,24 @@
+
+casf2016: 285 complexes, 10000 bootstrap resamples
+
+esm2  (3 seeds)
+  pearson_r     per-seed 0.748 +/- 0.011 over seeds   seed-mean preds 0.772 [0.708, 0.824]
+  rmse          per-seed 1.488 +/- 0.046 over seeds   seed-mean preds 1.437 [1.308, 1.570]
+  sd            per-seed 1.442 +/- 0.028 over seeds   seed-mean preds 1.383 [1.236, 1.525]
+
+onehot  (1 seed)
+  pearson_r     per-seed 0.722   seed-mean preds 0.722 [0.662, 0.774]
+  rmse          per-seed 1.537   seed-mean preds 1.537 [1.413, 1.658]
+  sd            per-seed 1.505   seed-mean preds 1.505 [1.377, 1.621]
+
+paired bootstrap: onehot - esm2 (seed-mean predictions, same complexes)
+  pearson_r     0.772 -> 0.722  delta -0.050 [-0.108, +0.009]  p=0.0948  NOT significant, favours neither
+  rmse          1.437 -> 1.537  delta +0.100 [-0.029, +0.226]  p=0.1230  NOT significant, favours neither
+  sd            1.383 -> 1.505  delta +0.122 [-0.022, +0.264]  p=0.0948  NOT significant, favours neither
+
+residual correlation between the two models: 0.730
+unpaired reference: a single run would need delta pearson_r > +0.064 to clear 95%.
+Pairing only tightens the delta in proportion to that correlation, so it buys
+little for models this far apart and a lot for near-identical variants.
+
+wrote ../evidence/comparisons/esm_vs_onehot_corrected.json

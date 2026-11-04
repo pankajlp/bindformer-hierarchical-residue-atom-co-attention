@@ -1,0 +1,24 @@
+
+casf2016: 285 complexes, 10000 bootstrap resamples
+
+baseline  (3 seeds)
+  pearson_r     per-seed 0.748 +/- 0.011 over seeds   seed-mean preds 0.772 [0.708, 0.824]
+  rmse          per-seed 1.488 +/- 0.046 over seeds   seed-mean preds 1.437 [1.308, 1.570]
+  sd            per-seed 1.442 +/- 0.028 over seeds   seed-mean preds 1.383 [1.236, 1.525]
+
+rbf  (3 seeds)
+  pearson_r     per-seed 0.744 +/- 0.007 over seeds   seed-mean preds 0.768 [0.709, 0.820]
+  rmse          per-seed 1.485 +/- 0.031 over seeds   seed-mean preds 1.416 [1.286, 1.549]
+  sd            per-seed 1.452 +/- 0.018 over seeds   seed-mean preds 1.391 [1.250, 1.529]
+
+paired bootstrap: rbf - baseline (seed-mean predictions, same complexes)
+  pearson_r     0.772 -> 0.768  delta -0.003 [-0.024, +0.018]  p=0.7748  NOT significant, favours neither
+  rmse          1.437 -> 1.416  delta -0.020 [-0.073, +0.031]  p=0.4300  NOT significant, favours neither
+  sd            1.383 -> 1.391  delta +0.008 [-0.046, +0.065]  p=0.7748  NOT significant, favours neither
+
+residual correlation between the two models: 0.955
+unpaired reference: a single run would need delta pearson_r > +0.064 to clear 95%.
+Pairing only tightens the delta in proportion to that correlation, so it buys
+little for models this far apart and a lot for near-identical variants.
+
+wrote ../evidence/comparisons/rbf_vs_baseline_corrected.json
