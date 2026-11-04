@@ -12,3 +12,7 @@ runs/
 bindformer/data/processed*/
 bindformer/runs/
 bindformer/checkpoints/
+
+# experiment outputs (checkpoints, rescores, run logs)
+checkpoints_*/
+*.log
