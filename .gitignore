@@ -19,3 +19,6 @@ bindformer/checkpoints/
 
 # arXiv build artifacts
 /paper/arxiv/
+
+# endorsement drafts contain arXiv endorsement codes - never publish
+/paper/ENDORSEMENT_REQUEST.md
