@@ -16,3 +16,6 @@ bindformer/checkpoints/
 # experiment working dirs: reproducible, large (weights); curated copies live in evidence/
 /bindformer/checkpoints_*/
 /bindformer/*.log
+
+# arXiv build artifacts
+/paper/arxiv/

@@ -1,7 +1,7 @@
 # BindFormer trained checkpoints — sha256 manifest
-# weights distributed as a PRIVATE GitHub release asset (not in git):
-#   https://github.com/pankajlp/bindformer-hierarchical-residue-atom-co-attention/releases/tag/weights-v1  (asset: bindformer-checkpoints.tar)
-# download:  gh release download weights-v1 --repo pankajlp/bindformer-hierarchical-residue-atom-co-attention
+# weights are NOT in this repo. They are kept in a separate PRIVATE repository
+#   (pankajlp/bindformer-weights, release weights-v1, asset bindformer-checkpoints.tar), available from the author on request.
+# Verify any copy against the sha256 sums below:  shasum -a 256 -c weights_manifest.txt
 # generated 2026-11-04T04:45:19Z
 
 2f8afd69b777b56379ce1bc69626964d73f763d5f99fafede5f33662214e67fe  checkpoints/best.pt

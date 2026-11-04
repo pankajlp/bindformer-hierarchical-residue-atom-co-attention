@@ -11,8 +11,6 @@ or arXiv with no external style files or data inputs — every number is inlined
 pdflatex paper.tex && pdflatex paper.tex   # twice, to resolve refs
 ```
 
-All quantitative claims trace to `../RESULTS.md` and the committed run records. The paper
-was not compiled in the environment where it was written (no local TeX toolchain); it
-passed a structural lint (brace/math-delimiter balance, environment and table-column
-matching, special-character escaping) but has not been run through `pdflatex`, so give it
-one compile pass before submission.
+All quantitative claims trace to `../RESULTS.md` and the committed run records. It compiles
+cleanly (no overfull boxes or warnings) with Tectonic 0.17 (`tectonic paper.tex`), which
+produced the committed `paper.pdf` (9 pages); arXiv's TeX Live builds the same source.
